@@ -369,6 +369,27 @@ describe("SdkFollowupCoordinator", () => {
 		)
 	})
 
+	it("does not present the previous task text as new user instructions on a bare resume", async () => {
+		const task = makeTask("task-1")
+		const historyItem = {
+			id: "task-1",
+			ts: 1,
+			task: "Original task",
+			tokensIn: 0,
+			tokensOut: 0,
+			totalCost: 0,
+			cwdOnTaskInitialization: "/task-cwd",
+		}
+		const { coordinator, options } = makeCoordinator({ task, historyItem })
+
+		await coordinator.askResponse(undefined)
+
+		const sentPrompt = options.sessions.fireAndForgetSend.mock.calls[0][2] as string
+		expect(sentPrompt).toContain("[TASK RESUMPTION]")
+		expect(sentPrompt).not.toContain("New instructions from the user")
+		expect(sentPrompt).not.toContain("Original task")
+	})
+
 	it("emits auth errors when resume fails because the cline provider is unauthenticated", async () => {
 		const task = makeTask("task-1")
 		const { coordinator, options } = makeCoordinator({ task })
