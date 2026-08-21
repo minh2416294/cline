@@ -472,13 +472,26 @@ async function discoverRulesLikeFiles(
 
 	try {
 		const entries = await readdir(directoryPath, { withFileTypes: true });
-		const candidates = entries
-			.filter((entry) => entry.isFile() && isMarkdownFile(entry.name))
-			.map((entry) => ({
-				directoryPath,
-				fileName: entry.name,
-				filePath: join(directoryPath, entry.name),
-			}));
+		const candidates: UnifiedConfigFileCandidate[] = [];
+		for (const entry of entries) {
+			if (!isMarkdownFile(entry.name)) {
+				continue;
+			}
+			const filePath = join(directoryPath, entry.name);
+			const isFile =
+				entry.isFile() ||
+				(entry.isSymbolicLink() &&
+					(await stat(filePath)
+						.then((entryStat) => entryStat.isFile())
+						.catch(() => false)));
+			if (isFile) {
+				candidates.push({
+					directoryPath,
+					fileName: entry.name,
+					filePath,
+				});
+			}
+		}
 
 		// Special case: if this is a workspace root directory, also check for AGENTS.md
 		const agentsPath = join(directoryPath, "AGENTS.md");

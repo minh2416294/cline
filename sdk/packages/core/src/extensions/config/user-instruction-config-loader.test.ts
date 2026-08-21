@@ -377,6 +377,100 @@ Use conventional commits.`,
 		},
 	);
 
+	it.skipIf(process.platform === "win32")(
+		"discovers rule and workflow files through symlinks",
+		async () => {
+			const tempRoot = await mkdtemp(
+				join(tmpdir(), "core-user-instructions-symlink-rule-"),
+			);
+			tempRoots.push(tempRoot);
+			const rulesDir = join(tempRoot, "rules");
+			const workflowsDir = join(tempRoot, "workflows");
+			const sharedDir = join(tempRoot, "shared");
+			await mkdir(rulesDir, { recursive: true });
+			await mkdir(workflowsDir, { recursive: true });
+			await mkdir(sharedDir, { recursive: true });
+
+			const targetRulePath = join(sharedDir, "team.md");
+			const targetWorkflowPath = join(sharedDir, "release.md");
+			await writeFile(
+				targetRulePath,
+				`---
+name: team
+---
+Run tests through the makefile.`,
+			);
+			await writeFile(
+				targetWorkflowPath,
+				`---
+name: release
+---
+Ship with the release checklist.`,
+			);
+			await symlink(targetRulePath, join(rulesDir, "team.md"), "file");
+			await symlink(
+				targetWorkflowPath,
+				join(workflowsDir, "release.md"),
+				"file",
+			);
+
+			const watcher = createUserInstructionConfigWatcher({
+				rules: { directories: [rulesDir] },
+				workflows: { directories: [workflowsDir] },
+			});
+
+			await watcher.refreshAll();
+
+			expect(watcher.getSnapshot("rule").get("team")?.item.instructions).toBe(
+				"Run tests through the makefile.",
+			);
+			expect(
+				watcher.getSnapshot("workflow").get("release")?.item.instructions,
+			).toBe("Ship with the release checklist.");
+		},
+	);
+
+	it.skipIf(process.platform === "win32")(
+		"keeps loading rules when a directory holds unreadable symlinks",
+		async () => {
+			const tempRoot = await mkdtemp(
+				join(tmpdir(), "core-user-instructions-broken-symlink-rule-"),
+			);
+			tempRoots.push(tempRoot);
+			const rulesDir = join(tempRoot, "rules");
+			await mkdir(rulesDir, { recursive: true });
+			await mkdir(join(rulesDir, "folder.md"), { recursive: true });
+			await writeFile(
+				join(rulesDir, "real.md"),
+				`---
+name: real
+---
+Keep changes minimal.`,
+			);
+			await symlink(
+				join(rulesDir, "missing-target.md"),
+				join(rulesDir, "dangling.md"),
+				"file",
+			);
+			const circularLink = join(rulesDir, "loop.md");
+			await symlink(circularLink, circularLink, "file");
+
+			const watcher = createUserInstructionConfigWatcher({
+				rules: { directories: [rulesDir] },
+			});
+
+			await watcher.refreshAll();
+
+			const rules = watcher.getSnapshot("rule");
+			expect(rules.get("real")?.item.instructions).toBe(
+				"Keep changes minimal.",
+			);
+			expect(rules.has("dangling")).toBe(false);
+			expect(rules.has("loop")).toBe(false);
+			expect(rules.has("folder")).toBe(false);
+		},
+	);
+
 	it("loads enterprise-style managed rules, workflows, and skills through the default workspace watcher", async () => {
 		const tempRoot = await mkdtemp(
 			join(tmpdir(), "core-user-instructions-managed-"),
